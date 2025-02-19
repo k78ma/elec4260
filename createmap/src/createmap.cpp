@@ -121,14 +121,63 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
         double angle = scan->angle_min;
 
         // Traverse all laser measurements
+        for (size_t i = 0; i < scan->ranges.size(); ++i, angle += scan->angle_increment) 
+        {
+            double range = scan->ranges[i];
+            
+            // Skip invalid measurements
+            if (std::isnan(range) || range < min_range_threshold || range > scan->range_max) {
+                continue;
+            }
+            
+            //map coordinates
+            // Calculate laser endpoint in laser frame
+            double x_laser = range * std::cos(angle);
+            double y_laser = range * std::sin(angle);
 
+            // Transform to map frame
+            tf::Vector3 point_laser(x_laser, y_laser, 0.0);
+            tf::Vector3 point_map = laser_transform * point_laser;
 
-            // map coordinates
+            // Get laser origin in map frame
+            tf::Vector3 laser_origin = laser_transform.getOrigin();
 
+            // Convert to grid coordinates
+            auto [start_x, start_y] = worldToGrid(laser_origin.x(), laser_origin.y());
+            auto [end_x, end_y] = worldToGrid(point_map.x(), point_map.y());
+
+            // Skip if out of bounds
+            if (start_x < 0 || start_x >= MAP_SIZE_X || start_y < 0 || start_y >= MAP_SIZE_Y ||
+                end_x < 0 || end_x >= MAP_SIZE_X || end_y < 0 || end_y >= MAP_SIZE_Y) {
+                continue;
+            }
+
+            // Get all points along the laser beam
+            auto line_points = bresenhamLine(start_x, start_y, end_x, end_y);
 
             // For loop to check the status of grid
             // scan_count, confirmed_obstacles, visited
 
+            // Process each point along the line
+            for (size_t j = 0; j < line_points.size(); ++j) {
+                auto [x, y] = line_points[j];
+                
+                // Mark as visited
+                visited[x][y] = true;
+
+                if (j == line_points.size() - 1) {
+                    // Endpoint (potential obstacle)
+                    scan_count[x][y]++;
+                    if (scan_count[x][y] >= SCAN_THRESHOLD) {
+                        confirmed_obstacles[x][y] = true;
+                    }
+                } else {
+                    // Points along the beam (free space)
+                    scan_count[x][y] = std::max(0, scan_count[x][y] - DECAY_FACTOR);
+                    confirmed_obstacles[x][y] = false;
+                }
+            }
+        }
     } 
     catch (const tf::TransformException& ex) 
     {
@@ -143,7 +192,35 @@ void publishMap(const ros::TimerEvent& event)
     ros::Time current_time = ros::Time::now();
     broadcastMapFrame(current_time);
 
+    // Create and fill the occupancy grid message
+    nav_msgs::OccupancyGrid map;
+    map.header.stamp = current_time;
+    map.header.frame_id = "map";
 
+    map.info.resolution = GRID_RESOLUTION;
+    map.info.width = MAP_SIZE_X;
+    map.info.height = MAP_SIZE_Y;
+    map.info.origin.position.x = -MAP_SIZE_X * GRID_RESOLUTION / 2.0;
+    map.info.origin.position.y = -MAP_SIZE_Y * GRID_RESOLUTION / 2.0;
+    map.info.origin.position.z = 0.0;
+    map.info.origin.orientation.w = 1.0;
+
+    // Fill the map data
+    map.data.resize(MAP_SIZE_X * MAP_SIZE_Y);
+    for (int y = 0; y < MAP_SIZE_Y; ++y) {
+        for (int x = 0; x < MAP_SIZE_X; ++x) {
+            int index = x + y * MAP_SIZE_X;
+            if (!visited[x][y]) {
+                map.data[index] = -1;  // Unknown
+            } else if (confirmed_obstacles[x][y]) {
+                map.data[index] = 100;  // Occupied
+            } else {
+                map.data[index] = 0;    // Free
+            }
+        }
+    }
+
+    map_publisher.publish(map);
 }
 
 int main(int argc, char** argv) 
