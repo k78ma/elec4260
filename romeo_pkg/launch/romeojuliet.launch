@@ -1,0 +1,4 @@
+<launch>
+    <node pkg="romeo_pkg" type="romeo_node" name="romeo_node" output="screen" />
+    <node pkg="romeo_pkg" type="juliet_node" name="romeo_node" output="screen" /> 
+</launch>
