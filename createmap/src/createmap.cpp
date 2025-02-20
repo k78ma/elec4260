@@ -126,10 +126,11 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
             double range = scan->ranges[i];
             
             // Skip invalid measurements
-            if (std::isnan(range) || range < min_range_threshold || range > scan->range_max) {
+            if (std::isnan(range) || range < min_range_threshold || range > scan->range_max) 
+            {
                 continue;
             }
-            
+
             //map coordinates
             // Calculate laser endpoint in laser frame
             double x_laser = range * std::cos(angle);
@@ -147,8 +148,9 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
             auto [end_x, end_y] = worldToGrid(point_map.x(), point_map.y());
 
             // Skip if out of bounds
-            if (start_x < 0 || start_x >= MAP_SIZE_X || start_y < 0 || start_y >= MAP_SIZE_Y ||
-                end_x < 0 || end_x >= MAP_SIZE_X || end_y < 0 || end_y >= MAP_SIZE_Y) {
+            if (start_x < 0 || start_x >= MAP_SIZE_X || start_y < 0 || start_y >= MAP_SIZE_Y 
+                || end_x < 0 || end_x >= MAP_SIZE_X || end_y < 0 || end_y >= MAP_SIZE_Y)
+            {
                 continue;
             }
 
