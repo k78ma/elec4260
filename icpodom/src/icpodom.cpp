@@ -278,8 +278,17 @@ void publishIcpOdom(const ros::Time& stamp, double x, double y, double yaw)
     odom.pose.pose.orientation.z = q.z();
     odom.pose.pose.orientation.w = q.w();
     
+    // Add covariance (optional but recommended)
+    for(int i = 0; i < 36; i++) {
+        odom.pose.covariance[i] = 0.0;
+    }
+    odom.pose.covariance[0] = 0.1;  // x
+    odom.pose.covariance[7] = 0.1;  // y
+    odom.pose.covariance[35] = 0.1; // yaw
+    
     // Publish the message
     g_icp_odom_pub.publish(odom);
+    ROS_INFO_THROTTLE(1.0, "ICP odom published with timestamp %f", stamp.toSec());
 }
 
 // Project laser scan to point cloud in map frame
@@ -421,6 +430,10 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "scan_to_map_icp_odometry");
+    
+    // Wait for time to become valid
+    ros::Time::waitForValid();
+    
     ros::NodeHandle nh;
 
     // initialize the tf listener and broadcaster
