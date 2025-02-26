@@ -92,24 +92,45 @@ TODO:
 Eigen::Matrix3f computeBestRigidTransform2D(const std::vector<Eigen::Vector2f>& src,
                                              const std::vector<Eigen::Vector2f>& dst)
 {
-    //TODO
-    // 1. compute the controid
-
+    // 1. compute the centroid
+    Eigen::Vector2f centroid_src = Eigen::Vector2f::Zero();
+    Eigen::Vector2f centroid_dst = Eigen::Vector2f::Zero();
+    
+    for (const auto& p : src) centroid_src += p;
+    for (const auto& p : dst) centroid_dst += p;
+    
+    centroid_src /= static_cast<float>(src.size());
+    centroid_dst /= static_cast<float>(dst.size());
 
     // 2. H = sum((pi - c_src)*(qi - c_dst)^T)
-
+    Eigen::Matrix2f H = Eigen::Matrix2f::Zero();
+    for (size_t i = 0; i < src.size(); ++i) {
+        Eigen::Vector2f p_centered = src[i] - centroid_src;
+        Eigen::Vector2f q_centered = dst[i] - centroid_dst;
+        H += p_centered * q_centered.transpose();
+    }
 
     // 3. SVD
-
+    Eigen::JacobiSVD<Eigen::Matrix2f> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix2f U = svd.matrixU();
+    Eigen::Matrix2f V = svd.matrixV();
 
     // 4. R = V * U^T
-
+    Eigen::Matrix2f R = V * U.transpose();
+    if (R.determinant() < 0) {
+        V.col(1) *= -1;
+        R = V * U.transpose();
+    }
 
     // 5. t = centroid_dst - R * centroid_src
-
+    Eigen::Vector2f t = centroid_dst - R * centroid_src;
 
     // 6. 3x3 matrix
-
+    Eigen::Matrix3f T = Eigen::Matrix3f::Identity();
+    T.block<2,2>(0,0) = R;
+    T.block<2,1>(0,2) = t;
+    
+    return T;
 }
 
 
@@ -156,19 +177,64 @@ bool performICP(const pcl::PointCloud<pcl::PointXYZ>::Ptr& mapCloud,
     for (int iter = 0; iter < maxIterations; ++iter)
     {
         // 1. update the source point from last transformation
-
+        std::vector<Eigen::Vector2f> transformedSource;
+        transformedSource.reserve(sourcePoints.size());
+        for (const auto& pt : sourcePoints) {
+            Eigen::Vector3f p(pt.x(), pt.y(), 1.0f);
+            Eigen::Vector3f transformed = T * p;
+            transformedSource.emplace_back(transformed.x(), transformed.y());
+        }
 
         // 2. correspondence and nearest point search
+        std::vector<Eigen::Vector2f> srcMatched;
+        std::vector<Eigen::Vector2f> dstMatched;
+        
+        for (const auto& p : transformedSource) {
+            float minDist = std::numeric_limits<float>::max();
+            Eigen::Vector2f closest;
+            
+            for (const auto& q : targetPoints) {
+                float dist = (p - q).squaredNorm();
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = q;
+                }
+            }
+            
+            // Only add if distance is within reasonable threshold
+            if (minDist < 1.0) {  // 1 meter threshold
+                srcMatched.push_back(p);
+                dstMatched.push_back(closest);
+            }
+        }
 
-        // If matched points is less than 3 pairs, then ICP fail
-
+        // If matched points is less than 3 pairs, then ICP fails
+        if (srcMatched.size() < 3) {
+            return false;
+        }
 
         // 3. Use computeBestRigidTransform2D to get the dT
+        Eigen::Matrix3f dT = computeBestRigidTransform2D(srcMatched, dstMatched);
+        T = dT * T;
 
+        // Check convergence
+        float dx = dT(0,2);
+        float dy = dT(1,2);
+        float dr = std::atan2(dT(1,0), dT(0,0));
+        
+        if (std::abs(dx) < converge_epsilon && 
+            std::abs(dy) < converge_epsilon && 
+            std::abs(dr) < converge_epsilon) {
+            break;
+        }
     }
 
     // get dx dy dyaw from T
-
+    dx = T(0,2);
+    dy = T(1,2);
+    dyaw = std::atan2(T(1,0), T(0,0));
+    
+    return true;
 }
 
 
@@ -186,7 +252,26 @@ void broadcastMapToBaseFootprint(const ros::Time& stamp, double x, double y, dou
 // TODO: Pub ICP odom
 void publishIcpOdom(const ros::Time& stamp, double x, double y, double yaw)
 {
-
+    nav_msgs::Odometry odom;
+    odom.header.stamp = stamp;
+    odom.header.frame_id = "map";
+    odom.child_frame_id = "base_footprint";
+    
+    // Set position
+    odom.pose.pose.position.x = x;
+    odom.pose.pose.position.y = y;
+    odom.pose.pose.position.z = 0.0;
+    
+    // Set orientation
+    tf::Quaternion q;
+    q.setRPY(0.0, 0.0, yaw);
+    odom.pose.pose.orientation.x = q.x();
+    odom.pose.pose.orientation.y = q.y();
+    odom.pose.pose.orientation.z = q.z();
+    odom.pose.pose.orientation.w = q.w();
+    
+    // Publish the message
+    g_icp_odom_pub.publish(odom);
 }
 
 // Project laser scan to point cloud in map frame
