@@ -148,9 +148,15 @@ bool performICP(const pcl::PointCloud<pcl::PointXYZ>::Ptr& mapCloud,
 {
     if (!mapCloud || mapCloud->empty() || !currentCloud || currentCloud->empty())
     {
-        ROS_WARN("ICP input cloud is empty, skip.");
+        ROS_WARN("ICP input cloud is empty, skip. Map size: %zu, Current size: %zu", 
+                 mapCloud ? mapCloud->size() : 0,
+                 currentCloud ? currentCloud->size() : 0);
         return false;
     }
+
+    // Add debug info
+    ROS_INFO_THROTTLE(1.0, "Performing ICP with Map points: %zu, Current points: %zu", 
+                      mapCloud->size(), currentCloud->size());
 
     // transfer to Eigen::Vector2f 
     std::vector<Eigen::Vector2f> targetPoints;
@@ -359,6 +365,9 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 
     ros::Time lookup_time = scan->header.stamp - ros::Duration(TF_DELAY);
 
+    // Add debug info
+    ROS_INFO_THROTTLE(1.0, "Received laser scan with %zu points", scan->ranges.size());
+
     // 1. project laser to map
     auto currentCloud = laserScanToPointCloudInMap(scan);
     if (!currentCloud)
@@ -375,6 +384,9 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
         ROS_WARN("ICP did not converge, keep old map->base_footprint.");
         return;
     }
+
+    // Add debug info for successful ICP
+    ROS_INFO_THROTTLE(1.0, "ICP Success - dx: %.3f, dy: %.3f, dyaw: %.3f", dx, dy, dyaw);
 
     // 3. map->base_footprint
     tf::StampedTransform tf_map_base;
