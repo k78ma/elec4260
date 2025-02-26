@@ -258,6 +258,8 @@ void broadcastMapToBaseFootprint(const ros::Time& stamp, double x, double y, dou
 // TODO: Pub ICP odom
 void publishIcpOdom(const ros::Time& stamp, double x, double y, double yaw)
 {
+    ROS_INFO_THROTTLE(1.0, "Publishing ICP odom - x: %.3f, y: %.3f, yaw: %.3f", x, y, yaw);
+    
     nav_msgs::Odometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = "map";
@@ -429,6 +431,7 @@ int main(int argc, char** argv)
     ros::Subscriber laser_sub = nh.subscribe("/scan", 10, laserScanCallback);
 
     g_icp_odom_pub = nh.advertise<nav_msgs::Odometry>("/icp_odom", 10);
+    ROS_INFO("ICP odometry node initialized. Publishing to /icp_odom");
 
     ros::spin();
     return 0;
