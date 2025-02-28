@@ -431,9 +431,6 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "scan_to_map_icp_odometry");
     
-    // Wait for time to become valid
-    ros::Time::waitForValid();
-    
     ros::NodeHandle nh;
 
     // initialize the tf listener and broadcaster
