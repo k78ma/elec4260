@@ -176,7 +176,6 @@ void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
                 } else {
                     // Points along the beam (free space)
                     scan_count[x][y] = std::max(0, scan_count[x][y] - DECAY_FACTOR);
-                    confirmed_obstacles[x][y] = false;
                 }
             }
         }
